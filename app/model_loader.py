@@ -1,11 +1,3 @@
-"""
-model_loader.py — Load model.joblib and encoders.joblib once at startup
-and expose them as module-level singletons.
-
-Calling reload() replaces the singletons in-place so the running API
-immediately uses the newly retrained model without a process restart.
-"""
-
 import os
 from pathlib import Path
 from typing import Optional
@@ -20,7 +12,7 @@ ENCODERS_PATH = Path(os.getenv("ENCODERS_PATH", str(_BASE / "models" / "encoders
 
 clf:            Optional[RandomForestClassifier] = None
 label_encoders: Optional[dict]                   = None
-scaler:         Optional[StandardScaler]          = None
+scaler:          Optional[StandardScaler]          = None
 current_version: Optional[str]                   = None
 
 
