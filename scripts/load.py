@@ -1,10 +1,3 @@
-"""
-load.py — Bulk-load cleaned_healthcare.csv into the PostgreSQL patients table.
-
-Uses INSERT ... ON CONFLICT DO NOTHING to make the load idempotent;
-re-running will not create duplicate rows.
-"""
-
 import os
 from pathlib import Path
 
