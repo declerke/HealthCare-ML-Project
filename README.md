@@ -60,6 +60,16 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 
 ---
 
+## 📸 Screenshots
+
+### Prediction UI — Live Result
+
+![Healthcare Test Result Predictor](assets/prediction_result.png)
+
+*Patient data submitted: Age 22 · Male · O+ · Elective admission · Billing $5,000 · Blue Cross · Obesity · Lipitor — predicted **Normal** with 37.5% confidence across a balanced 3-class output.*
+
+---
+
 ## 📸 API Documentation
 
 The live Swagger UI is available at `/docs` on the deployed instance. Key endpoints:
@@ -140,6 +150,8 @@ healthcare-ml-project/
 │   └── load.py                   # Bulk-load to PostgreSQL
 ├── frontend/
 │   └── index.html                # Prediction UI (served by FastAPI)
+├── assets/
+│   └── prediction_result.png     # Live prediction screenshot
 ├── tests/
 │   ├── test_api.py               # 14 API endpoint integration tests
 │   └── test_model.py             # 9 preprocessing + inference unit tests
