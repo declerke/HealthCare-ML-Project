@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Healthcare Test Result Predictor</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f3f4f6;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .card {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 2.5rem 2.5rem 2rem;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .badge {
+      display: inline-block;
+      background: #eff6ff;
+      color: #2563eb;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      margin-bottom: 1rem;
+      letter-spacing: 0.02em;
+    }
+
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #111827;
+      margin-bottom: 0.4rem;
+    }
+
+    .subtitle {
+      color: #6b7280;
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+    }
+
+    .section-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #374151;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1.25rem;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    .field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+    }
+
+    .field.full { grid-column: 1 / -1; }
+
+    label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #374151;
+    }
+
+    input, select {
+      width: 100%;
+      padding: 0.6rem 0.85rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.925rem;
+      color: #111827;
+      background: #fff;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+
+    input:focus, select:focus {
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37,99,235,0.12);
+    }
+
+    input::placeholder { color: #9ca3af; }
+
+    .btn-row {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 1.5rem;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: #fff;
+      border: none;
+      padding: 0.65rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.925rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-primary:disabled { background: #93c5fd; cursor: not-allowed; }
+
+    .btn-secondary {
+      background: #fff;
+      color: #374151;
+      border: 1px solid #d1d5db;
+      padding: 0.65rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.925rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .btn-secondary:hover { background: #f9fafb; }
+
+    .footer-note {
+      text-align: center;
+      color: #9ca3af;
+      font-size: 0.8rem;
+      margin-top: 1.75rem;
+    }
+
+    /* Result panel */
+    #result-panel {
+      display: none;
+      margin-top: 1.75rem;
+      border-top: 1px solid #e5e7eb;
+      padding-top: 1.5rem;
+    }
+
+    .result-header {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #374151;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 1rem;
+    }
+
+    .result-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1.25rem;
+      border-radius: 999px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+    }
+
+    .result-normal       { background: #dcfce7; color: #15803d; }
+    .result-abnormal     { background: #fee2e2; color: #b91c1c; }
+    .result-inconclusive { background: #fef9c3; color: #a16207; }
+
+    .prob-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    .prob-item {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 0.75rem;
+      text-align: center;
+    }
+
+    .prob-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #6b7280;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .prob-value {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #111827;
+      margin-top: 0.2rem;
+    }
+
+    .confidence-row {
+      font-size: 0.875rem;
+      color: #6b7280;
+      margin-bottom: 0.25rem;
+    }
+
+    .confidence-row span { font-weight: 600; color: #111827; }
+
+    .error-msg {
+      display: none;
+      background: #fee2e2;
+      color: #b91c1c;
+      border: 1px solid #fca5a5;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.875rem;
+      margin-top: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">LuxDevHQ Internship Project</span>
+    <h1>Healthcare Test Result Predictor</h1>
+    <p class="subtitle">Enter patient information below to get a predicted test result from the deployed machine learning model.</p>
+
+    <p class="section-title">Patient Details</p>
+
+    <form id="predict-form" novalidate>
+      <div class="grid-2">
+        <div class="field">
+          <label for="age">Age</label>
+          <input type="number" id="age" name="age" placeholder="e.g. 45" min="1" max="120" required />
+        </div>
+        <div class="field">
+          <label for="gender">Gender</label>
+          <select id="gender" name="gender" required>
+            <option value="" disabled selected>Select gender</option>
+            <option>Male</option>
+            <option>Female</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="blood_type">Blood Type</label>
+          <select id="blood_type" name="blood_type" required>
+            <option value="" disabled selected>Select blood type</option>
+            <option>A+</option><option>A-</option>
+            <option>B+</option><option>B-</option>
+            <option>AB+</option><option>AB-</option>
+            <option>O+</option><option>O-</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="admission_type">Admission Type</label>
+          <select id="admission_type" name="admission_type" required>
+            <option value="" disabled selected>Select admission type</option>
+            <option>Emergency</option>
+            <option>Elective</option>
+            <option>Urgent</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="billing_amount">Billing Amount</label>
+          <input type="number" id="billing_amount" name="billing_amount" placeholder="e.g. 2000.50" min="0" step="0.01" required />
+        </div>
+        <div class="field">
+          <label for="insurance_provider">Insurance Provider</label>
+          <input type="text" id="insurance_provider" name="insurance_provider" placeholder="e.g. Cigna" list="insurance-list" required />
+          <datalist id="insurance-list">
+            <option>Medicare</option>
+            <option>Aetna</option>
+            <option>UnitedHealthcare</option>
+            <option>Cigna</option>
+            <option>Blue Cross</option>
+          </datalist>
+        </div>
+        <div class="field full">
+          <label for="medical_condition">Medical Condition</label>
+          <input type="text" id="medical_condition" name="medical_condition" placeholder="e.g. Diabetes" list="condition-list" required />
+          <datalist id="condition-list">
+            <option>Diabetes</option>
+            <option>Hypertension</option>
+            <option>Asthma</option>
+            <option>Obesity</option>
+            <option>Arthritis</option>
+            <option>Cancer</option>
+          </datalist>
+        </div>
+        <div class="field full">
+          <label for="medication">Medication</label>
+          <input type="text" id="medication" name="medication" placeholder="e.g. Aspirin" list="medication-list" required />
+          <datalist id="medication-list">
+            <option>Aspirin</option>
+            <option>Ibuprofen</option>
+            <option>Paracetamol</option>
+            <option>Penicillin</option>
+            <option>Lipitor</option>
+          </datalist>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button type="submit" class="btn-primary" id="submit-btn">Predict Test Result</button>
+        <button type="button" class="btn-secondary" id="clear-btn">Clear Form</button>
+      </div>
+    </form>
+
+    <div class="error-msg" id="error-msg"></div>
+
+    <div id="result-panel">
+      <p class="result-header">Prediction Result</p>
+      <div id="result-badge" class="result-badge"></div>
+      <p class="confidence-row">Confidence: <span id="confidence-val"></span></p>
+      <div class="prob-grid">
+        <div class="prob-item">
+          <div class="prob-label">Normal</div>
+          <div class="prob-value" id="prob-normal">—</div>
+        </div>
+        <div class="prob-item">
+          <div class="prob-label">Abnormal</div>
+          <div class="prob-value" id="prob-abnormal">—</div>
+        </div>
+        <div class="prob-item">
+          <div class="prob-label">Inconclusive</div>
+          <div class="prob-value" id="prob-inconclusive">—</div>
+        </div>
+      </div>
+    </div>
+
+    <p class="footer-note">Powered by FastAPI backend with a trained RandomForest machine learning model</p>
+  </div>
+
+  <script>
+    const API_BASE = window.location.origin;
+
+    document.getElementById("predict-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      hideError();
+      hideResult();
+
+      const btn = document.getElementById("submit-btn");
+      btn.disabled = true;
+      btn.textContent = "Predicting...";
+
+      const payload = {
+        age:                parseInt(document.getElementById("age").value),
+        gender:             document.getElementById("gender").value,
+        blood_type:         document.getElementById("blood_type").value,
+        admission_type:     document.getElementById("admission_type").value,
+        billing_amount:     parseFloat(document.getElementById("billing_amount").value),
+        insurance_provider: document.getElementById("insurance_provider").value.trim(),
+        medical_condition:  document.getElementById("medical_condition").value.trim(),
+        medication:         document.getElementById("medication").value.trim(),
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/predict`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || `Server error ${res.status}`);
+        }
+
+        const data = await res.json();
+        showResult(data);
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Predict Test Result";
+      }
+    });
+
+    document.getElementById("clear-btn").addEventListener("click", () => {
+      document.getElementById("predict-form").reset();
+      hideResult();
+      hideError();
+    });
+
+    function showResult(data) {
+      const label = data.predicted_result;
+      const badge = document.getElementById("result-badge");
+      badge.textContent = label;
+      badge.className = "result-badge result-" + label.toLowerCase();
+
+      document.getElementById("confidence-val").textContent =
+        (data.confidence * 100).toFixed(1) + "%";
+
+      const p = data.probabilities;
+      document.getElementById("prob-normal").textContent =
+        ((p["Normal"] ?? 0) * 100).toFixed(1) + "%";
+      document.getElementById("prob-abnormal").textContent =
+        ((p["Abnormal"] ?? 0) * 100).toFixed(1) + "%";
+      document.getElementById("prob-inconclusive").textContent =
+        ((p["Inconclusive"] ?? 0) * 100).toFixed(1) + "%";
+
+      document.getElementById("result-panel").style.display = "block";
+    }
+
+    function hideResult() {
+      document.getElementById("result-panel").style.display = "none";
+    }
+
+    function showError(msg) {
+      const el = document.getElementById("error-msg");
+      el.textContent = "Error: " + msg;
+      el.style.display = "block";
+    }
+
+    function hideError() {
+      document.getElementById("error-msg").style.display = "none";
+    }
+  </script>
+</body>
+</html>
