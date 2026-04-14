@@ -1,16 +1,3 @@
-"""
-clean.py — Standardise the raw healthcare CSV and write
-data/cleaned_healthcare.csv ready for DB loading and ML training.
-
-Transformations applied:
-  - Strip whitespace and title-case Name, Doctor, Hospital columns
-  - Standardise categorical strings to title-case
-  - Parse date columns to ISO format (YYYY-MM-DD)
-  - Round Billing Amount to 2 decimal places
-  - Drop duplicate rows
-  - Assert no nulls remain before writing
-"""
-
 from pathlib import Path
 import pandas as pd
 
