@@ -1,9 +1,3 @@
-"""
-predict.py — Single-row inference called by the API route.
-Loads model and encoders once (cached by model_loader), runs prediction,
-and returns the class label with per-class probabilities.
-"""
-
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder, StandardScaler
