@@ -34,6 +34,8 @@ class PredictRequest(BaseModel):
 
 
 class PredictResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     predicted_result: TEST_RESULTS
     confidence: float
     probabilities: Dict[str, float]
@@ -49,6 +51,8 @@ class RetrainResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    model_config = {"protected_namespaces": ()}
+
     status: str
     model_loaded: bool
     model_version: Optional[str] = None
