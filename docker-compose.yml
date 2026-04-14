@@ -1,6 +1,54 @@
 version: "3.9"
 
+# =============================================================================
+# Airflow common configuration (shared by webserver + scheduler via YAML anchor)
+# =============================================================================
+x-airflow-common:
+  &airflow-common
+  image: apache/airflow:3.0.0
+  environment:
+    &airflow-common-env
+    # Core
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "false"
+    # Fernet key encrypts connection passwords stored in the metadata DB.
+    # Generate a real key for production: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+    AIRFLOW__CORE__FERNET_KEY: ""
+    # Metadata database (separate from the healthcare app DB)
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-db/airflow
+    # Webserver
+    AIRFLOW__WEBSERVER__SECRET_KEY: "healthcare_demo_secret_change_in_prod"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    # Project root inside the container (used by retrain_dag.py)
+    AIRFLOW_PROJECT_ROOT: /opt/airflow/project
+    # Healthcare app database — used by ml/train.py when log_to_db=True
+    DATABASE_URL: postgresql://postgres:password@db/healthcare_db
+    # Additional Python packages installed on container start.
+    # NOTE: this is convenient for dev/demo; build a custom image for production.
+    _PIP_ADDITIONAL_REQUIREMENTS: >-
+      scikit-learn==1.5.2
+      pandas==2.1.4
+      numpy==1.26.4
+      joblib==1.4.2
+      python-dotenv==1.0.1
+      psycopg2-binary==2.9.10
+      sqlalchemy==2.0.36
+  volumes:
+    - ./dags:/opt/airflow/dags          # DAG files
+    - .:/opt/airflow/project            # Full project (ml/, data/, models/, etc.)
+    - airflow_logs:/opt/airflow/logs    # Task logs
+  depends_on:
+    airflow-db:
+      condition: service_healthy
+
+# =============================================================================
 services:
+# =============================================================================
+
+  # ---------------------------------------------------------------------------
+  # Healthcare application database
+  # ---------------------------------------------------------------------------
   db:
     image: postgres:15-alpine
     container_name: healthcare_db
@@ -19,5 +67,95 @@ services:
       timeout: 5s
       retries: 5
 
+  # ---------------------------------------------------------------------------
+  # Airflow metadata database (separate from the app DB for clean isolation)
+  # ---------------------------------------------------------------------------
+  airflow-db:
+    image: postgres:15-alpine
+    container_name: airflow_db
+    environment:
+      POSTGRES_DB: airflow
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+    ports:
+      - "5433:5432"
+    volumes:
+      - airflow_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # One-shot init container: migrate Airflow schema + create admin user.
+  # Runs once and exits; webserver/scheduler wait for it to complete.
+  # ---------------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        echo "==> Running Airflow 3 DB migration ..."
+        airflow db migrate
+        echo "==> Creating admin user ..."
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@healthpredict.local \
+          --password admin
+        echo "==> Airflow initialisation complete."
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Airflow webserver — UI available at http://localhost:8080
+  # Login: admin / admin
+  # ---------------------------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+  # ---------------------------------------------------------------------------
+  # Airflow scheduler — parses DAGs and triggers task execution on schedule
+  # ---------------------------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--hostname", "$${HOSTNAME}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: unless-stopped
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-init:
+        condition: service_completed_successfully
+
+# =============================================================================
 volumes:
   pg_data:
+  airflow_pg_data:
+  airflow_logs:

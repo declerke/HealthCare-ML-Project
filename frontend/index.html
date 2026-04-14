@@ -365,6 +365,14 @@
           body: JSON.stringify(payload),
         });
 
+        // Render free-tier cold-start returns an HTML splash page, not JSON.
+        // Detect it before trying to parse so the user gets a helpful message.
+        const contentType = res.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          showError("Service is warming up — please wait ~30 seconds and try again.");
+          return;
+        }
+
         if (!res.ok) {
           const err = await res.json();
           throw new Error(err.detail || `Server error ${res.status}`);
@@ -373,7 +381,12 @@
         const data = await res.json();
         showResult(data);
       } catch (err) {
-        showError(err.message);
+        // SyntaxError means JSON.parse failed — almost certainly a cold-start HTML page.
+        if (err instanceof SyntaxError) {
+          showError("Service is warming up — please wait ~30 seconds and try again.");
+        } else {
+          showError(err.message);
+        }
       } finally {
         btn.disabled = false;
         btn.textContent = "Predict Test Result";

@@ -17,7 +17,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 3. **Data Storage** — `scripts/load.py` bulk-loads cleaned records into **PostgreSQL** via SQLAlchemy, using `INSERT ... ON CONFLICT DO NOTHING` for idempotent reloads; prediction and model version history are persisted in separate tables
 4. **ML Training** — `ml/train.py` encodes 8 features (2 numeric + 6 categorical), scales numerics with `StandardScaler`, trains a **RandomForestClassifier (n=50, max_depth=15)**, evaluates on a stratified 80/20 split, and serialises both `model.joblib` (5.1 MB, joblib compress=3) and `encoders.joblib`
 5. **Model Serving** — **FastAPI** exposes `POST /predict` for real-time inference; the model and encoders are loaded once at startup via the lifespan context and held in memory for sub-millisecond access
-6. **Automated Retraining** — **GitHub Actions** cron (`0 12 * * 6`) runs `ml/train.py` every Saturday at noon UTC, commits the updated model artifacts, and pushes to `main`; Render auto-deploys on push
+6. **Automated Retraining** — Two complementary scheduling layers: **GitHub Actions** cron (`0 12 * * 6`) runs `ml/train.py` every Saturday at noon UTC, commits the updated model artifacts, and pushes to `main` (Render auto-deploys on push); **Apache Airflow 3** (`dags/retrain_dag.py`) mirrors the same schedule for local orchestration, adding a 3-task TaskFlow pipeline with built-in monitoring, retry logic, and manual trigger capability via the Airflow UI
 7. **Frontend** — A static HTML/CSS/JS page served directly by FastAPI at `GET /` submits patient data to the API and renders the prediction result with confidence scores and a probability breakdown
 
 ---
@@ -37,6 +37,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 | **ORM**         | SQLAlchemy                      | 2.0.36      |
 | **Driver**      | psycopg2-binary                 | 2.9.10      |
 | **Scheduling**  | GitHub Actions (cron)           | —           |
+| **Orchestration** | Apache Airflow                | 3.0.0       |
 | **Hosting**     | Render.com                      | —           |
 | **Testing**     | Pytest + httpx TestClient       | 8.3.3       |
 | **Dataset**     | Kaggle (prasad22/healthcare-dataset) | CC0-1.0 |
@@ -109,6 +110,8 @@ The live Swagger UI is available at `/docs` on the deployed instance. Key endpoi
 - **Encoders saved alongside model:** `LabelEncoder` and `StandardScaler` are serialised to `models/encoders.joblib` so inference always uses the exact same vocabulary and scaling parameters as the training run that produced `model.joblib`. Mismatched encoders would silently corrupt predictions
 - **`INSERT ... ON CONFLICT DO NOTHING` for data loading:** Makes `scripts/load.py` idempotent — the script can be re-run after a failed partial load without creating duplicates
 - **Absolute path resolution in model_loader:** `Path(__file__).resolve().parents[1]` anchors all file paths to the repo root regardless of the working directory at runtime — eliminates relative-path failures in test environments and deployed containers
+- **Dual-layer scheduling (GitHub Actions + Airflow 3):** GitHub Actions handles the cloud retraining loop (persistent runner → commit model → Render redeploy), while Airflow 3 provides local orchestration with a visual DAG graph, per-task logs, retry policies, and a manual trigger button. The two layers share the identical cron expression (`0 12 * * 6`) and call the same `ml/train.py` logic — demonstrating that the training code is environment-agnostic
+- **Airflow `LocalExecutor` with dedicated metadata DB:** Using `LocalExecutor` (vs `CeleryExecutor`) avoids Redis and Celery dependencies for a single-node demo while preserving the full Airflow 3 feature set. A separate `airflow_db` Postgres instance keeps Airflow metadata cleanly isolated from the healthcare application database
 
 ---
 
@@ -155,7 +158,9 @@ healthcare-ml-project/
 ├── tests/
 │   ├── test_api.py               # 14 API endpoint integration tests
 │   └── test_model.py             # 9 preprocessing + inference unit tests
-├── docker-compose.yml            # Local PostgreSQL for development
+├── dags/
+│   └── retrain_dag.py            # Airflow 3 retraining DAG (3-task TaskFlow pipeline)
+├── docker-compose.yml            # PostgreSQL + Apache Airflow 3 (webserver + scheduler)
 ├── Procfile                      # Render start command
 ├── render.yaml                   # Render service + database IaC
 ├── runtime.txt                   # Pins Python 3.11.9 for Render build
@@ -239,6 +244,33 @@ healthcare-ml-project/
 4. Add `DATABASE_URL` as a GitHub Actions secret (`Settings → Secrets → Actions`)
 5. The GitHub Actions workflow (`retrain.yml`) will retrain the model automatically every Saturday at 12:00 UTC
 
+### Apache Airflow 3 (Local Orchestration)
+
+Run the full stack — including the Airflow webserver and scheduler — with a single command:
+
+```bash
+docker-compose up -d
+```
+
+This starts five containers:
+
+| Container              | Role                                              | Port  |
+|------------------------|---------------------------------------------------|-------|
+| `healthcare_db`        | Application PostgreSQL (patients, predictions)    | 5432  |
+| `airflow_db`           | Airflow metadata PostgreSQL                       | 5433  |
+| `airflow_init`         | One-shot: `airflow db migrate` + admin user       | —     |
+| `airflow_webserver`    | Airflow 3 UI                                      | 8080  |
+| `airflow_scheduler`    | Parses DAGs and triggers scheduled runs           | —     |
+
+Once all containers are healthy (allow ~2 minutes for `_PIP_ADDITIONAL_REQUIREMENTS` install):
+
+1. Open **http://localhost:8080** — login with `admin` / `admin`
+2. Navigate to **DAGs → healthcare_retrain**
+3. Click the **▶ Trigger DAG** button to run the pipeline manually
+4. Watch the 3-task graph: `load_data → train_model → validate_artifacts`
+
+> **Note:** The DAG is also scheduled for `0 12 * * 6` (Saturday 12:00 UTC) — identical to the GitHub Actions cron — so both orchestrators run the same retraining logic independently.
+
 ---
 
 ## 🎓 Skills Demonstrated
@@ -246,6 +278,7 @@ healthcare-ml-project/
 - **Machine Learning pipeline** — end-to-end from raw data ingestion through feature engineering, model training, evaluation, and serialisation using Scikit-learn
 - **REST API development** — FastAPI with Pydantic v2 request validation, lifespan model loading, CORS middleware, and structured JSON responses
 - **Automated MLOps scheduling** — GitHub Actions cron workflow for weekly model retraining with git-based artifact versioning and zero-touch Render redeploy
+- **Apache Airflow 3 orchestration** — TaskFlow API DAG (`@dag` / `@task` decorators) with a 3-task pipeline (load → train → validate), XCom-based data passing, manual trigger support, and a Docker Compose stack running the full Airflow 3 webserver + scheduler against a dedicated metadata database
 - **Relational data modelling** — PostgreSQL schema with three normalised tables (patients, predictions, model_versions), indexed for query performance
 - **Production-grade testing** — 23-test Pytest suite covering API integration (lifespan-aware TestClient), input validation edge cases, and ML inference correctness
 - **Data cleaning and preprocessing** — Pandas-based deduplication, string standardisation, categorical label encoding, and numeric feature scaling
