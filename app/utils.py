@@ -1,7 +1,3 @@
-"""
-utils.py — Shared helper utilities for the API layer.
-"""
-
 import os
 from functools import lru_cache
 
