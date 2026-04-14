@@ -1,7 +1,3 @@
--- healthcare_db schema
--- Run automatically by Docker Compose (docker-entrypoint-initdb.d)
--- or manually: psql $DATABASE_URL -f database/queries.sql
-
 CREATE TABLE IF NOT EXISTS patients (
     id                 SERIAL PRIMARY KEY,
     name               VARCHAR(120),
