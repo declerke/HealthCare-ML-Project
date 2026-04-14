@@ -15,7 +15,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 1. **Data Ingestion** — `scripts/ingest.py` uses the Kaggle API to download the raw healthcare dataset (55,500 records) directly to `data/raw/`, then copies it to a stable path for downstream processing
 2. **Data Cleaning** — `scripts/clean.py` standardises string casing across all categorical columns, parses date fields to ISO format, drops 534 duplicate rows, and writes `data/cleaned_healthcare.csv` (54,966 rows)
 3. **Data Storage** — `scripts/load.py` bulk-loads cleaned records into **PostgreSQL** via SQLAlchemy, using `INSERT ... ON CONFLICT DO NOTHING` for idempotent reloads; prediction and model version history are persisted in separate tables
-4. **ML Training** — `ml/train.py` encodes 8 features (2 numeric + 6 categorical), scales numerics with `StandardScaler`, trains a **RandomForestClassifier (n=200)**, evaluates on a stratified 80/20 split, and serialises both `model.joblib` and `encoders.joblib`
+4. **ML Training** — `ml/train.py` encodes 8 features (2 numeric + 6 categorical), scales numerics with `StandardScaler`, trains a **RandomForestClassifier (n=50, max_depth=15)**, evaluates on a stratified 80/20 split, and serialises both `model.joblib` (5.1 MB, joblib compress=3) and `encoders.joblib`
 5. **Model Serving** — **FastAPI** exposes `POST /predict` for real-time inference; the model and encoders are loaded once at startup via the lifespan context and held in memory for sub-millisecond access
 6. **Automated Retraining** — **GitHub Actions** cron (`0 12 * * 6`) runs `ml/train.py` every Saturday at noon UTC, commits the updated model artifacts, and pushes to `main`; Render auto-deploys on push
 7. **Frontend** — A static HTML/CSS/JS page served directly by FastAPI at `GET /` submits patient data to the API and renders the prediction result with confidence scores and a probability breakdown
@@ -48,14 +48,15 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 - **Dataset:** 54,966 clean patient records (534 duplicates removed from 55,500 raw rows)
 - **Class balance:** Normal 18,331 · Abnormal 18,437 · Inconclusive 18,198 (near-perfect 3-way split)
 - **Train / Test split:** 43,972 training rows · 10,994 test rows (stratified 80/20)
-- **Model accuracy:** 41.5% (baseline for random 3-class prediction = 33.3%; +8.2pp above chance)
-- **Macro F1-score:** 0.4147 across all three classes
+- **Model accuracy:** 37.7% (baseline for random 3-class prediction = 33.3%; +4.4pp above chance)
+- **Macro F1-score:** 0.3771 across all three classes
+- **Model artifact size:** 5.1 MB (joblib compress=3; n=50 trees, max_depth=15 — constrained to stay within GitHub's 100 MB file limit)
 - **Test suite:** 23/23 tests passing (14 API integration + 9 unit tests)
 - **Retraining schedule:** Every Saturday 12:00 UTC — automated, zero-touch
 - **API response time:** < 50ms per prediction (model held in-memory)
 - **Database tables:** `patients` (54,966 rows) · `predictions` (logs every API call) · `model_versions` (retraining audit trail)
 
-> Note: The Kaggle dataset is synthetically generated for educational purposes with randomised feature-to-outcome relationships. The 41.5% accuracy reflects genuine learning above the random baseline on a dataset with intentionally limited causal signal.
+> Note: The Kaggle dataset is synthetically generated for educational purposes with randomised feature-to-outcome relationships. The 37.7% accuracy reflects genuine learning above the random baseline on a dataset with intentionally limited causal signal. Tree depth and count are constrained to 5.1 MB to satisfy GitHub's 100 MB file size limit while preserving deployability.
 
 ---
 
@@ -92,6 +93,8 @@ The live Swagger UI is available at `/docs` on the deployed instance. Key endpoi
 ## 🧠 Key Design Decisions
 
 - **RandomForest over Logistic Regression:** Handles mixed numeric/categorical features without assuming linearity; produces calibrated `predict_proba` scores for per-class confidence display in the UI; robust to the moderate class imbalance in a 3-way split
+- **Model size constraint (n=50, max_depth=15, compress=3):** An unconstrained RandomForest (n=200, unlimited depth) on 54,966 samples produces a 305 MB artifact — exceeding GitHub's 100 MB file size limit. Constraining tree count and depth, combined with joblib level-3 compression, reduces the artifact to 5.1 MB with only a 3.8pp accuracy trade-off (41.5% → 37.7%). Both figures remain meaningfully above the 33.3% random baseline
+- **Python 3.11 pinned via `runtime.txt`:** Render defaults to the latest Python release (3.14 at time of deployment), which has no pre-built binary wheels for scikit-learn or pandas — causing source compilation that times out during the build. `runtime.txt` pins 3.11.9 to guarantee wheel availability
 - **GitHub Actions for retraining, not APScheduler:** Render's free tier uses an ephemeral filesystem — any in-process scheduler's saved model would be lost on restart. GitHub Actions runs on a persistent Ubuntu runner, commits `model.joblib` back to the repo, and Render auto-deploys on the new commit — a stateless, infrastructure-free scheduling solution
 - **Encoders saved alongside model:** `LabelEncoder` and `StandardScaler` are serialised to `models/encoders.joblib` so inference always uses the exact same vocabulary and scaling parameters as the training run that produced `model.joblib`. Mismatched encoders would silently corrupt predictions
 - **`INSERT ... ON CONFLICT DO NOTHING` for data loading:** Makes `scripts/load.py` idempotent — the script can be re-run after a failed partial load without creating duplicates
@@ -143,6 +146,7 @@ healthcare-ml-project/
 ├── docker-compose.yml            # Local PostgreSQL for development
 ├── Procfile                      # Render start command
 ├── render.yaml                   # Render service + database IaC
+├── runtime.txt                   # Pins Python 3.11.9 for Render build
 ├── .env.example                  # Required environment variables
 ├── .gitignore
 └── requirements.txt
@@ -156,8 +160,8 @@ healthcare-ml-project/
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/declerke/healthcare-ml-project.git
-   cd healthcare-ml-project
+   git clone https://github.com/declerke/Healthcare-ML-Project.git
+   cd Healthcare-ML-Project
    ```
 
 2. **Create and activate a virtual environment**
