@@ -1,12 +1,3 @@
-"""
-main.py — FastAPI application factory.
-
-Startup sequence:
-  1. Load model.joblib + encoders.joblib into memory
-  2. Mount the router with all API endpoints
-  3. Serve the static frontend at GET /
-"""
-
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
