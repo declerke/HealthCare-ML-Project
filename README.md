@@ -1,6 +1,6 @@
 # 🏥 HealthPredict: Clinical Test Result Intelligence Platform
 
-**HealthPredict** is a production-grade machine learning system designed to bridge the gap between raw patient admission records and automated clinical test result predictions. Built on a FastAPI backend with a PostgreSQL data store, the platform ingests 54,966 patient records, trains a RandomForest classifier to predict test outcomes as **Normal**, **Abnormal**, or **Inconclusive**, and retrains automatically every Saturday at 12:00 UTC via GitHub Actions — without human intervention.
+**HealthPredict** is a production-grade machine learning system designed to bridge the gap between raw patient admission records and automated clinical test result predictions. Built on a FastAPI backend with a PostgreSQL data store, the platform ingests 54,966 patient records, trains and compares **XGBoost** and **RandomForest** classifiers to predict test outcomes as **Normal**, **Abnormal**, or **Inconclusive**, and retrains automatically every Saturday at 12:00 UTC via GitHub Actions — without human intervention.
 
 ---
 
@@ -15,7 +15,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 1. **Data Ingestion** — `scripts/ingest.py` uses the Kaggle API to download the raw healthcare dataset (55,500 records) directly to `data/raw/`, then copies it to a stable path for downstream processing
 2. **Data Cleaning** — `scripts/clean.py` standardises string casing across all categorical columns, parses date fields to ISO format, drops 534 duplicate rows, and writes `data/cleaned_healthcare.csv` (54,966 rows)
 3. **Data Storage** — `scripts/load.py` bulk-loads cleaned records into **PostgreSQL** via SQLAlchemy, using `INSERT ... ON CONFLICT DO NOTHING` for idempotent reloads; prediction and model version history are persisted in separate tables
-4. **ML Training** — `ml/train.py` encodes 8 features (2 numeric + 6 categorical), scales numerics with `StandardScaler`, trains a **RandomForestClassifier (n=50, max_depth=15)**, evaluates on a stratified 80/20 split, and serialises both `model.joblib` (5.1 MB, joblib compress=3) and `encoders.joblib`
+4. **ML Training** — `ml/train.py` encodes 8 features (2 numeric + 6 categorical), scales numerics with `StandardScaler`, trains **XGBClassifier (n=200, max_depth=6)** and **RandomForestClassifier (n=50, max_depth=15)** in sequence, evaluates both on a stratified 80/20 split, and serialises the best-performing model to `model.joblib` (5.1 MB, joblib compress=3) alongside `encoders.joblib`
 5. **Model Serving** — **FastAPI** exposes `POST /predict` for real-time inference; the model and encoders are loaded once at startup via the lifespan context and held in memory for sub-millisecond access
 6. **Automated Retraining** — Two complementary scheduling layers: **GitHub Actions** cron (`0 12 * * 6`) runs `ml/train.py` every Saturday at noon UTC, commits the updated model artifacts, and pushes to `main` (Render auto-deploys on push); **Apache Airflow 3** (`dags/retrain_dag.py`) mirrors the same schedule for local orchestration, adding a 3-task TaskFlow pipeline with built-in monitoring, retry logic, and manual trigger capability via the Airflow UI
 7. **Frontend** — A static HTML/CSS/JS page served directly by FastAPI at `GET /` submits patient data to the API and renders the prediction result with confidence scores and a probability breakdown
@@ -29,7 +29,9 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 | **API**         | FastAPI                         | 0.115.0     |
 | **Server**      | Uvicorn                         | 0.32.0      |
 | **Validation**  | Pydantic                        | 2.9.2       |
-| **ML**          | Scikit-learn RandomForest       | 1.5.2       |
+| **ML (primary)** | Scikit-learn RandomForest      | 1.5.2       |
+| **ML (trained)** | XGBoost                        | 2.1.3       |
+| **Pkg Manager** | UV (uv pip)                     | latest      |
 | **Data**        | Pandas                          | 2.1.4       |
 | **Numerics**    | NumPy                           | 1.26.4      |
 | **Serialisation** | Joblib                        | 1.4.2       |
@@ -49,9 +51,11 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 - **Dataset:** 54,966 clean patient records (534 duplicates removed from 55,500 raw rows)
 - **Class balance:** Normal 18,331 · Abnormal 18,437 · Inconclusive 18,198 (near-perfect 3-way split)
 - **Train / Test split:** 43,972 training rows · 10,994 test rows (stratified 80/20)
-- **Model accuracy:** 37.7% (baseline for random 3-class prediction = 33.3%; +4.4pp above chance)
-- **Macro F1-score:** 0.3771 across all three classes
-- **Model artifact size:** 5.1 MB (joblib compress=3; n=50 trees, max_depth=15 — constrained to stay within GitHub's 100 MB file limit)
+- **Models trained:** XGBClassifier (n=200, max_depth=6) and RandomForestClassifier (n=50, max_depth=15) — both evaluated on the same 80/20 split; best selected automatically by macro F1
+- **XGBoost accuracy:** 35.5% · Macro F1: 0.3553
+- **RandomForest accuracy:** 37.7% · Macro F1: 0.3771 — **selected as serving model** (+2.2pp F1 over XGBoost)
+- **Baseline (random 3-class):** 33.3% — both models exceed the baseline
+- **Model artifact size:** 5.1 MB (joblib compress=3; RF n=50 trees, max_depth=15 — constrained to stay within GitHub's 100 MB file limit)
 - **Test suite:** 23/23 tests passing (14 API integration + 9 unit tests)
 - **Retraining schedule:** Every Saturday 12:00 UTC — automated, zero-touch
 - **API response time:** < 50ms per prediction (model held in-memory)
@@ -103,7 +107,8 @@ The live Swagger UI is available at `/docs` on the deployed instance. Key endpoi
 
 ## 🧠 Key Design Decisions
 
-- **RandomForest over Logistic Regression:** Handles mixed numeric/categorical features without assuming linearity; produces calibrated `predict_proba` scores for per-class confidence display in the UI; robust to the moderate class imbalance in a 3-way split
+- **Multi-model training with automatic best-model selection:** Both XGBClassifier and RandomForestClassifier are trained on every run; the model with the higher macro F1 is saved as the serving artifact. On this dataset RandomForest (F1 0.3771) outperforms XGBoost (F1 0.3553) because the 54,966-row dataset is synthetically generated with intentionally weak feature-to-label signal — gradient boosting's iterative residual corrections provide no advantage when label noise is near-random. The comparison is logged to stdout on every retraining run for auditability
+- **RandomForest over Logistic Regression:** Handles mixed numeric/categorical features without assuming linearity; produces calibrated `predict_proba` scores for per-class confidence display in the UI; robust to the near-perfect class balance in a 3-way split
 - **Model size constraint (n=50, max_depth=15, compress=3):** An unconstrained RandomForest (n=200, unlimited depth) on 54,966 samples produces a 305 MB artifact — exceeding GitHub's 100 MB file size limit. Constraining tree count and depth, combined with joblib level-3 compression, reduces the artifact to 5.1 MB with only a 3.8pp accuracy trade-off (41.5% → 37.7%). Both figures remain meaningfully above the 33.3% random baseline
 - **Python 3.11 pinned via `runtime.txt`:** Render defaults to the latest Python release (3.14 at time of deployment), which has no pre-built binary wheels for scikit-learn or pandas — causing source compilation that times out during the build. `runtime.txt` pins 3.11.9 to guarantee wheel availability
 - **GitHub Actions for retraining, not APScheduler:** Render's free tier uses an ephemeral filesystem — any in-process scheduler's saved model would be lost on restart. GitHub Actions runs on a persistent Ubuntu runner, commits `model.joblib` back to the repo, and Render auto-deploys on the new commit — a stateless, infrastructure-free scheduling solution
@@ -142,11 +147,11 @@ healthcare-ml-project/
 │   └── queries.sql               # DDL: CREATE TABLE statements
 ├── ml/
 │   ├── preprocess.py             # Feature encoding + StandardScaler
-│   ├── train.py                  # RandomForest training + artifact save
+│   ├── train.py                  # XGBoost + RandomForest training; saves best by macro F1
 │   ├── evaluate.py               # Accuracy, F1, confusion matrix
 │   └── predict.py                # Single-row inference logic
 ├── models/
-│   ├── model.joblib              # Trained RandomForest artifact
+│   ├── model.joblib              # Best-performing model artifact (RandomForest, F1 0.3771)
 │   └── encoders.joblib           # LabelEncoders + StandardScaler
 ├── notebooks/
 │   └── analysis.ipynb            # EDA: distributions, correlations
@@ -167,9 +172,10 @@ healthcare-ml-project/
 ├── Procfile                      # Render start command
 ├── render.yaml                   # Render service + database IaC
 ├── runtime.txt                   # Pins Python 3.11.9 for Render build
+├── pyproject.toml                # UV project manifest (PEP 621)
+├── requirements.txt              # UV-generated pinned deps for Render + CI
 ├── .env.example                  # Required environment variables
-├── .gitignore
-└── requirements.txt
+└── .gitignore
 ```
 
 ---
@@ -184,51 +190,56 @@ healthcare-ml-project/
    cd Healthcare-ML-Project
    ```
 
-2. **Create and activate a virtual environment**
+2. **Install UV (package manager)**
    ```bash
-   python -m venv .venv
+   pip install uv
+   ```
+
+3. **Create and activate a virtual environment**
+   ```bash
+   uv venv
    source .venv/bin/activate   # Windows: .venv\Scripts\activate
    ```
 
-3. **Install dependencies**
+4. **Install dependencies**
    ```bash
-   pip install -r requirements.txt
+   uv pip install -r requirements.txt
    ```
 
-4. **Configure environment variables**
+5. **Configure environment variables**
    ```bash
    cp .env.example .env
    # Edit .env — set DATABASE_URL and RETRAIN_API_KEY
    ```
 
-5. **Start PostgreSQL (Docker)**
+6. **Start PostgreSQL (Docker)**
    ```bash
    docker-compose up -d
    ```
 
-6. **Initialise the database schema**
+7. **Initialise the database schema**
    ```bash
    psql $DATABASE_URL -f database/queries.sql
    ```
 
-7. **Download, clean, and load the dataset**
+8. **Download, clean, and load the dataset**
    ```bash
    python scripts/ingest.py
    python scripts/clean.py
    python scripts/load.py
    ```
 
-8. **Train the initial model**
+9. **Train the initial model**
    ```bash
    python ml/train.py
    ```
 
-9. **Start the API server**
-   ```bash
-   uvicorn app.main:app --reload
-   ```
+10. **Start the API server**
+    ```bash
+    uvicorn app.main:app --reload
+    ```
 
-10. **Run tests**
+11. **Run tests**
     ```bash
     pytest tests/ -v
     ```
@@ -267,7 +278,7 @@ This starts seven containers:
 | `airflow_dag_processor`  | Parses DAG files (mandatory separate service in Airflow 3)  | —     |
 | `airflow_triggerer`      | Handles deferrable operators                                | —     |
 
-Once all containers are healthy (allow ~2–3 minutes for `scikit-learn==1.5.2` install on first start):
+Once all containers are healthy (allow ~3–4 minutes for `scikit-learn==1.5.2 xgboost==2.1.3` install on first start):
 
 1. Open **http://localhost:8080** — login with `admin` / `admin`
 2. Navigate to **DAGs → healthcare_retrain**
@@ -286,7 +297,9 @@ Once all containers are healthy (allow ~2–3 minutes for `scikit-learn==1.5.2` 
 
 ## 🎓 Skills Demonstrated
 
-- **Machine Learning pipeline** — end-to-end from raw data ingestion through feature engineering, model training, evaluation, and serialisation using Scikit-learn
+- **Multi-model ML pipeline** — trains XGBoost and RandomForest classifiers on the same dataset, evaluates both with accuracy/precision/recall/F1/confusion matrix, and automatically selects the best-performing artifact for serving
+- **XGBoost** — gradient-boosted tree classifier with hyperparameter configuration (n_estimators, max_depth, learning_rate, subsample, colsample_bytree) using the sklearn-compatible API
+- **UV package management** — PEP 621 `pyproject.toml` for dependency declaration; `uv pip install` in GitHub Actions and Render build pipeline
 - **REST API development** — FastAPI with Pydantic v2 request validation, lifespan model loading, CORS middleware, and structured JSON responses
 - **Automated MLOps scheduling** — GitHub Actions cron workflow for weekly model retraining with git-based artifact versioning and zero-touch Render redeploy
 - **Apache Airflow 3 orchestration** — TaskFlow API DAG (`@dag` / `@task` decorators) with a 3-task pipeline (load → train → validate), XCom-based data passing, manual trigger support, and a Docker Compose stack running the full Airflow 3 webserver + scheduler against a dedicated metadata database

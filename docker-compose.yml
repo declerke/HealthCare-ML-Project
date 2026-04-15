@@ -35,9 +35,9 @@ x-airflow-common:
     #    containers see the same credentials.  Login: admin / admin
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: "admin:Admin"
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: "/opt/airflow/project/simple_auth_manager_passwords.json"
-    # ── scikit-learn only — sqlalchemy & psycopg2 already in the base image.
+    # ── ML libraries — sqlalchemy & psycopg2 already in the base image.
     #    Airflow 3 requires sqlalchemy<2.0; forcing 2.x breaks the whole stack.
-    _PIP_ADDITIONAL_REQUIREMENTS: scikit-learn==1.5.2
+    _PIP_ADDITIONAL_REQUIREMENTS: scikit-learn==1.5.2 xgboost==2.1.3
   volumes:
     - ./dags:/opt/airflow/dags
     - .:/opt/airflow/project
