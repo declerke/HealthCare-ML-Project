@@ -37,7 +37,7 @@ x-airflow-common:
     AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: "/opt/airflow/project/simple_auth_manager_passwords.json"
     # ── ML libraries — sqlalchemy & psycopg2 already in the base image.
     #    Airflow 3 requires sqlalchemy<2.0; forcing 2.x breaks the whole stack.
-    _PIP_ADDITIONAL_REQUIREMENTS: scikit-learn==1.5.2 xgboost==2.1.3
+    _PIP_ADDITIONAL_REQUIREMENTS: "scikit-learn==1.5.2 xgboost[cpu]==2.1.3"
   volumes:
     - ./dags:/opt/airflow/dags
     - .:/opt/airflow/project
@@ -126,7 +126,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 90s
+      start_period: 300s
     restart: unless-stopped
     depends_on:
       airflow-db:
