@@ -46,14 +46,14 @@ def test_predict_returns_200(client):
 def test_predict_response_structure(client):
     res = client.post("/predict", json=VALID_PAYLOAD)
     body = res.json()
-    assert "predicted_result" in body
+    assert "predicted_test_result" in body
     assert "confidence" in body
     assert "probabilities" in body
 
 
 def test_predict_result_is_valid_class(client):
     res = client.post("/predict", json=VALID_PAYLOAD)
-    result = res.json()["predicted_result"]
+    result = res.json()["predicted_test_result"]
     assert result in {"Normal", "Abnormal", "Inconclusive"}
 
 

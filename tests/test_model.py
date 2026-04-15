@@ -65,7 +65,7 @@ def test_model_classes(loaded_model, encoders_and_scaler):
 def test_predict_returns_valid_class(loaded_model, encoders_and_scaler):
     label_encoders, scaler = encoders_and_scaler
     result = predict_test_result(VALID_PAYLOAD, loaded_model, label_encoders, scaler)
-    assert result["predicted_result"] in EXPECTED_CLASSES
+    assert result["predicted_test_result"] in EXPECTED_CLASSES
 
 
 def test_predict_confidence_range(loaded_model, encoders_and_scaler):

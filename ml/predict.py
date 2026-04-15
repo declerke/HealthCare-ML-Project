@@ -1,5 +1,4 @@
 import numpy as np
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
 from ml.preprocess import encode_single_row
@@ -7,7 +6,7 @@ from ml.preprocess import encode_single_row
 
 def predict_test_result(
     payload: dict,
-    clf: RandomForestClassifier,
+    clf,
     label_encoders: dict,
     scaler: StandardScaler,
 ) -> dict:
@@ -26,7 +25,7 @@ def predict_test_result(
     }
 
     return {
-        "predicted_result": predicted_label,
+        "predicted_test_result": predicted_label,
         "confidence": round(confidence, 4),
         "probabilities": {k: round(v, 4) for k, v in class_probs.items()},
     }

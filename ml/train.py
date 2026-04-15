@@ -8,6 +8,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from xgboost import XGBClassifier
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -27,6 +28,29 @@ MODEL_PATH = Path(__file__).resolve().parents[1] / "models" / "model.joblib"
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5432/healthcare_db")
 
 
+def _build_candidates(n_classes: int) -> list[tuple[str, object]]:
+    xgb = XGBClassifier(
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        eval_metric="mlogloss",
+        num_class=n_classes,
+        random_state=42,
+        n_jobs=-1,
+    )
+    rf = RandomForestClassifier(
+        n_estimators=50,
+        max_depth=15,
+        min_samples_split=10,
+        min_samples_leaf=5,
+        n_jobs=-1,
+        random_state=42,
+    )
+    return [("XGBoost", xgb), ("RandomForest", rf)]
+
+
 def train(log_to_db: bool = False) -> dict:
     print(f"[{datetime.utcnow().isoformat()}] Starting training run ...")
 
@@ -37,41 +61,52 @@ def train(log_to_db: bool = False) -> dict:
     label_encoders, scaler = build_encoders(df)
     X, y = encode_features(df, label_encoders, scaler)
 
+    n_classes = len(label_encoders[TARGET_COL].classes_)
+
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
     print(f"Train: {len(X_train):,}  |  Test: {len(X_test):,}")
 
-    clf = RandomForestClassifier(
-        n_estimators=50,
-        max_depth=15,
-        min_samples_split=10,
-        min_samples_leaf=5,
-        n_jobs=-1,
-        random_state=42,
-    )
-    clf.fit(X_train, y_train)
+    candidates = _build_candidates(n_classes)
+    best_clf = None
+    best_metrics: dict = {}
+    all_model_metrics: dict = {}
 
-    metrics = evaluate_model(clf, X_test, y_test, label_encoders[TARGET_COL])
-    print(
-        f"Accuracy: {metrics['accuracy']:.4f}  |  "
-        f"F1 (macro): {metrics['f1_macro']:.4f}"
-    )
+    for name, clf in candidates:
+        print(f"\nTraining {name} ...")
+        clf.fit(X_train, y_train)
+        metrics = evaluate_model(clf, X_test, y_test, label_encoders[TARGET_COL])
+        all_model_metrics[name] = metrics
+        print(
+            f"  {name}  Accuracy: {metrics['accuracy']:.4f}  |  "
+            f"F1 (macro): {metrics['f1_macro']:.4f}"
+        )
+        if best_clf is None or metrics["f1_macro"] > best_metrics.get("f1_macro", 0):
+            best_clf = clf
+            best_metrics = metrics
+            best_metrics["model_name"] = name
+
+    print(f"\nBest model: {best_metrics['model_name']}")
 
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(clf, MODEL_PATH, compress=3)
+    joblib.dump(best_clf, MODEL_PATH, compress=3)
     save_encoders(label_encoders, scaler)
     print(f"Model saved to {MODEL_PATH}")
 
     version = datetime.utcnow().strftime("v%Y%m%d_%H%M%S")
-    metrics["version"] = version
-    metrics["n_samples"] = len(df)
+    best_metrics["version"] = version
+    best_metrics["n_samples"] = len(df)
+    best_metrics["all_models"] = {
+        name: {"accuracy": m["accuracy"], "f1_macro": m["f1_macro"]}
+        for name, m in all_model_metrics.items()
+    }
 
     if log_to_db:
-        _log_version_to_db(metrics)
+        _log_version_to_db(best_metrics)
 
     print(f"Training complete — version {version}")
-    return metrics
+    return best_metrics
 
 
 def _log_version_to_db(metrics: dict) -> None:

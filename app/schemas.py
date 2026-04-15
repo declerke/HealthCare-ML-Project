@@ -36,7 +36,7 @@ class PredictRequest(BaseModel):
 class PredictResponse(BaseModel):
     model_config = {"protected_namespaces": ()}
 
-    predicted_result: TEST_RESULTS
+    predicted_test_result: TEST_RESULTS
     confidence: float
     probabilities: Dict[str, float]
     model_version: Optional[str] = None
