@@ -400,7 +400,7 @@
     });
 
     function showResult(data) {
-      const label = data.predicted_result;
+      const label = data.predicted_test_result;
       const badge = document.getElementById("result-badge");
       badge.textContent = label;
       badge.className = "result-badge result-" + label.toLowerCase();
