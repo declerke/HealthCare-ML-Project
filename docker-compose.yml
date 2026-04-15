@@ -136,17 +136,18 @@ services:
 
   # ── Airflow 3 scheduler ────────────────────────────────────────────────────────
   # Airflow 3 scheduler has no HTTP health endpoint; use jobs check instead.
-  # timeout 30s: airflow CLI startup is slow when scikit-learn is on the path.
+  # start_period 300s covers: ~3 min scikit-learn install + ~1 min Airflow boot.
+  # timeout 60s: airflow CLI startup + DB round-trip takes ~42s on this stack.
   airflow-scheduler:
     <<: *airflow-common
     container_name: airflow_scheduler
     command: scheduler
     healthcheck:
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "SchedulerJob", "--local"]
-      interval: 30s
-      timeout: 30s
-      retries: 5
-      start_period: 120s
+      interval: 60s
+      timeout: 60s
+      retries: 3
+      start_period: 300s
     restart: unless-stopped
     depends_on:
       airflow-db:
@@ -162,10 +163,10 @@ services:
     command: dag-processor
     healthcheck:
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "DagProcessorJob", "--local"]
-      interval: 30s
-      timeout: 30s
-      retries: 5
-      start_period: 120s
+      interval: 60s
+      timeout: 60s
+      retries: 3
+      start_period: 300s
     restart: unless-stopped
     depends_on:
       airflow-db:
@@ -180,10 +181,10 @@ services:
     command: triggerer
     healthcheck:
       test: ["CMD", "airflow", "jobs", "check", "--job-type", "TriggererJob", "--local"]
-      interval: 30s
-      timeout: 30s
-      retries: 5
-      start_period: 120s
+      interval: 60s
+      timeout: 60s
+      retries: 3
+      start_period: 300s
     restart: unless-stopped
     depends_on:
       airflow-db:
