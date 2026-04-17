@@ -70,7 +70,7 @@ Clinical laboratories process thousands of patient records daily, yet predicting
 
 ### Prediction UI — Live Result
 
-![Healthcare Test Result Predictor](assets/prediction_result.png)
+![Healthcare Test Result Predictor](assets/live_prediction_demo.png)
 
 *Patient data submitted: Age 56 · Female · AB− · Emergency admission · Billing $5,600.70 · UnitedHealthcare · Hypertension · Paracetamol — predicted **Normal** with 37.0% confidence (Abnormal 29.5% · Inconclusive 33.5%).*
 
@@ -163,7 +163,7 @@ healthcare-ml-project/
 ├── frontend/
 │   └── index.html                # Prediction UI (served by FastAPI)
 ├── assets/
-│   └── prediction_result.png     # Live prediction screenshot
+│   └── live_prediction_demo.png  # Live prediction screenshot
 ├── tests/
 │   ├── test_api.py               # 14 API endpoint integration tests
 │   └── test_model.py             # 9 preprocessing + inference unit tests
