@@ -361,7 +361,11 @@
 
       if (!res.ok) {
         const err = await res.json();
-        throw new Error(err.detail || `Server error ${res.status}`);
+        const detail = err.detail;
+        const msg = Array.isArray(detail)
+          ? detail.map(d => d.msg || JSON.stringify(d)).join("; ")
+          : (typeof detail === "string" ? detail : `Server error ${res.status}`);
+        throw new Error(msg);
       }
 
       return res.json();
